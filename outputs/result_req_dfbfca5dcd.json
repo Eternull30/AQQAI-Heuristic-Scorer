@@ -1,0 +1,59 @@
+{
+  "request_id": "req_dfbfca5dcd",
+  "query": "Explain vector databases in simple terms",
+  "total_time_ms": 5016.22,
+  "winner": {
+    "model_id": "cerebras-gpt-oss",
+    "relevance": 0.3471,
+    "coherence": 0.3623,
+    "completeness": 1.0,
+    "consistency": 0.92,
+    "weighted_score": 0.6327,
+    "confidence_tier": "MEDIUM",
+    "latency_ms": 1214.02,
+    "success": true,
+    "error": null,
+    "content": "**Vector databases in plain English**\n\n---\n\n### 1. What\u2019s a \u201cvector\u201d anyway?\nImagine you have a word, a sentence, a photo, or a product description. A *vector* is just a list of numbers that captures the essence of that item\u2014its meaning, style, or visual features.  \n\n- **Word example:** \u201ccat\u201d \u2192 `[0.12, -0.03, 0.87, \u2026]` (hundred\u2011plus numbers)  \n- **Image example:** A photo of a sunset \u2192 `[0.45, 0.22, 0.99, \u2026]`  \n\nThese numbers come from a *machine\u2011learning model* (like BERT for text or CLIP for images). The model translates raw data into a point in a high\u2011dimensional space, where similar items end up **close together** and dissimilar items end up far apart.\n\n---\n\n### 2. The problem without a vector database\nIf you want to find \u201call items that are like this one,\u201d you need to compare vectors:\n\n- **Similarity search**: \u201cHow close is this vector to every other vector?\u201d  \n- **Brute\u2011force**: Compute the distance to every single record\u2014slow when you have millions of items.\n\nRegular relational databases (SQL) store rows of text or numbers, but they\u2019re not built for fast *nearest\u2011neighbor* queries on high\u2011dimensional vectors.\n\n---\n\n### 3. What a vector database does\nA **vector database** is a specialized storage system that:\n\n| Feature | Why it matters |\n|---------|----------------|\n| **Efficient indexing** (e.g., HNSW, IVF\u2011PQ, ANNOY) | Finds the nearest vectors in milliseconds instead of minutes. |\n| **Scalable storage** | Handles millions to billions of vectors while keeping queries cheap. |\n| **Hybrid support** | Lets you keep traditional fields (IDs, tags) alongside vectors, so you can filter by metadata and then rank by similarity. |\n| **APIs for similarity** | Simple calls like `search(query_vector, top_k=10)` that return the most similar items. |\n| **Persistence & durability** | Data is saved to disk, replicated, and can survive crashes\u2014just like any other database. |\n\nIn short, it\u2019s a **search engine for \u201cnumeric fingerprints.\u201d**\n\n---\n\n### 4. How it works (high\u2011level steps)\n\n1. **Create vectors**  \n   - Feed your raw data (text, image, audio, etc.) into an embedding model \u2192 a vector.\n\n2. **Insert into the DB**  \n   - Store the vector together with an identifier and any"
+  },
+  "responses": [
+    {
+      "model_id": "cerebras-gpt-oss",
+      "relevance": 0.3471,
+      "coherence": 0.3623,
+      "completeness": 1.0,
+      "consistency": 0.92,
+      "weighted_score": 0.6327,
+      "confidence_tier": "MEDIUM",
+      "latency_ms": 1214.02,
+      "success": true,
+      "error": null,
+      "content": "**Vector databases in plain English**\n\n---\n\n### 1. What\u2019s a \u201cvector\u201d anyway?\nImagine you have a word, a sentence, a photo, or a product description. A *vector* is just a list of numbers that captures the essence of that item\u2014its meaning, style, or visual features.  \n\n- **Word example:** \u201ccat\u201d \u2192 `[0.12, -0.03, 0.87, \u2026]` (hundred\u2011plus numbers)  \n- **Image example:** A photo of a sunset \u2192 `[0.45, 0.22, 0.99, \u2026]`  \n\nThese numbers come from a *machine\u2011learning model* (like BERT for text or CLIP for images). The model translates raw data into a point in a high\u2011dimensional space, where similar items end up **close together** and dissimilar items end up far apart.\n\n---\n\n### 2. The problem without a vector database\nIf you want to find \u201call items that are like this one,\u201d you need to compare vectors:\n\n- **Similarity search**: \u201cHow close is this vector to every other vector?\u201d  \n- **Brute\u2011force**: Compute the distance to every single record\u2014slow when you have millions of items.\n\nRegular relational databases (SQL) store rows of text or numbers, but they\u2019re not built for fast *nearest\u2011neighbor* queries on high\u2011dimensional vectors.\n\n---\n\n### 3. What a vector database does\nA **vector database** is a specialized storage system that:\n\n| Feature | Why it matters |\n|---------|----------------|\n| **Efficient indexing** (e.g., HNSW, IVF\u2011PQ, ANNOY) | Finds the nearest vectors in milliseconds instead of minutes. |\n| **Scalable storage** | Handles millions to billions of vectors while keeping queries cheap. |\n| **Hybrid support** | Lets you keep traditional fields (IDs, tags) alongside vectors, so you can filter by metadata and then rank by similarity. |\n| **APIs for similarity** | Simple calls like `search(query_vector, top_k=10)` that return the most similar items. |\n| **Persistence & durability** | Data is saved to disk, replicated, and can survive crashes\u2014just like any other database. |\n\nIn short, it\u2019s a **search engine for \u201cnumeric fingerprints.\u201d**\n\n---\n\n### 4. How it works (high\u2011level steps)\n\n1. **Create vectors**  \n   - Feed your raw data (text, image, audio, etc.) into an embedding model \u2192 a vector.\n\n2. **Insert into the DB**  \n   - Store the vector together with an identifier and any"
+    },
+    {
+      "model_id": "mistral-small",
+      "relevance": 0.1988,
+      "coherence": 0.4041,
+      "completeness": 1.0,
+      "consistency": 1.0,
+      "weighted_score": 0.6107,
+      "confidence_tier": "MEDIUM",
+      "latency_ms": 2528.11,
+      "success": true,
+      "error": null,
+      "content": "A **vector database** is like a super-smart librarian for computers. Instead of organizing books by title or author, it stores and retrieves information based on **meaning**\u2014using numbers (called **vectors**) to represent data.\n\n### Simple Example:\nImagine you have 3 fruits:\n- **Apple** \u2192 [0.8, 0.1, 0.1]\n- **Banana** \u2192 [0.1, 0.8, 0.1]\n- **Cherry** \u2192 [0.1, 0.1, 0.8]\n\nThese numbers describe how similar each fruit is to others (e.g., apples are close in the list to bananas but far from cherries).\n\nA vector database:\n1. **Stores** these vectors (like a digital filing system).\n2. **Searches** by finding the closest matches (e.g., \"Show me things similar to banana\").\n3. **Helps AI** understand context (e.g., \"Find images like this cat photo\").\n\n### Why It\u2019s Useful:\n- **Powering AI:** Helps chatbots, recommendation systems, and image search understand relationships between data.\n- **Fast & Scalable:** Quickly finds relevant info even in massive datasets (like finding a needle in a haystack).\n\nThink of it as a **Google for meaning**, not just keywords!\n\nWould you like a real-world analogy? \ud83d\ude0a"
+    },
+    {
+      "model_id": "gemini-3.1-flash-lite",
+      "relevance": 0.2368,
+      "coherence": 0.3323,
+      "completeness": 1.0,
+      "consistency": 0.8,
+      "weighted_score": 0.5741,
+      "confidence_tier": "LOW",
+      "latency_ms": 4112.21,
+      "success": true,
+      "error": null,
+      "content": "To understand a vector database, you first have to understand how a normal database works.\n\n### 1. The \"Old\" Way: Keyword Matching\nThink of a traditional database like a **filing cabinet**. If you search for \"dog,\" the computer looks for every file that contains the exact word \"dog.\" If a file contains the word \"puppy\" but not \"dog,\" the computer might miss it entirely. It is literal and rigid.\n\n### 2. The \"Vector\" Way: Concept Matching\nA vector database doesn't look at words; it looks at **meanings**.\n\nIt turns data (text, images, audio) into a long list of numbers called a **Vector** (or an \"embedding\"). Think of this vector as a set of coordinates on a massive, multi-dimensional map.\n\n*   **Proximity = Similarity:** In this map, items that are similar in meaning are placed close together.\n*   \"Dog\" and \"Puppy\" will have coordinates that are very close to each other.\n*   \"Dog\" and \"Refrigerator\" will be very far apart.\n\n### 3. How it works (The Analogy)\nImagine a giant library where the books aren't organized by title or author, but by **the feeling and subject of the story.**\n\nIf you walk up to the librarian and say, \"I want a story about a loyal companion,\" the librarian doesn't look for the word \"loyal.\" Instead, they walk to a specific section of the room where \"loyal companions\" live. They might hand you a book about a dog, a book about a robot sidekick, or a book about a faithful horse.\n\n**The vector database is that librarian.** It finds things based on how they relate to your request, not just the specific words you used.\n\n### 4. Why is this useful right now?\nVector databases are the \"secret sauce\" behind modern AI like **ChatGPT**. \n\nWhen you ask ChatGPT a question, it can\u2019t possibly \"remember\" every piece of data on the internet in its brain. Instead, the AI uses a vector database to:\n1.  Turn your question into a vector (coordinates).\n2.  Search its \"library\" of data to find the most relevant information (the coordinates that are closest to yours).\n3.  Use that information to write a smart, context-aware answer.\n\n### Summary\n*   **Traditional Database:** Searches for **exact matches** (like a CTRL+F search).\n*   **Vector Database:** Searches for **similar meanings** (like a \"this reminds me of that\" search).\n\nIt allows computers to understand the nuance, context, and relationships between data, which is exactly how humans think."
+    }
+  ]
+}
