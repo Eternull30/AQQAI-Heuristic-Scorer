@@ -511,12 +511,3 @@ class HeuristicScorer:
     ) -> list[ScoredResponse]:
         """Score every response. Failed ones get zeroed out."""
         return [self.score_one(query, r) for r in responses]
-
-    def pick_winner(self, scored: list[ScoredResponse]) -> ScoredResponse:
-        """Return the highest-scoring successful response."""
-        valid = [s for s in scored if s.success and s.weighted_score > 0]
-        if not valid:
-            raise ValueError(
-                "All model responses failed — no winner can be selected."
-            )
-        return max(valid, key=lambda s: s.weighted_score)

@@ -19,9 +19,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from adapters import ALL_ADAPTERS, BaseModelAdapter
 from scorer import HeuristicScorer, ModelResponse
 from fusion import fuse_responses
+from task_analyzer import analyze_task, analyze_task_detailed
+import bayesian
 
 scorer = HeuristicScorer()
 os.makedirs("outputs", exist_ok=True)
+
+# bayesian.store is already initialised at module level in bayesian.py
+# (PriorStore auto-loads priors.json if it exists, or creates fresh defaults)
+# No explicit load_store() call needed anymore.
 
 
 # ──────────────────────────────────────────────────────────
@@ -48,9 +54,23 @@ def run_pipeline(query: str) -> dict:
     print(f"\n{'='*60}")
     print(f"Query: {query}")
     print(f"{'='*60}")
-    print(f"Calling {len(ALL_ADAPTERS)} models in parallel...\n")
 
-    # ── Parallel model calls ───────────────────────────────
+    # ── Step 1: Task Analysis ──────────────────────────────
+    task_detail = analyze_task_detailed(query)
+    task_type   = task_detail["task_type"]
+
+    print(f"\n  🔍 Task Analyzer")
+    print(f"     Task type : {task_type.upper()}")
+    matched_summary = {k: v for k, v in task_detail["matched_keywords"].items() if v}
+    if matched_summary:
+        for cat, kws in matched_summary.items():
+            marker = " ← winner" if cat == task_type else ""
+            print(f"     {cat:<12}: {task_detail['scores'][cat]} match(es) — {kws}{marker}")
+    else:
+        print(f"     No keywords matched → defaulting to general")
+
+    # ── Step 2: Parallel model calls ──────────────────────
+    print(f"\n  Calling {len(ALL_ADAPTERS)} models in parallel...\n")
     raw_responses = []
     with ThreadPoolExecutor(max_workers=len(ALL_ADAPTERS)) as pool:
         futures = {
@@ -63,25 +83,76 @@ def run_pipeline(query: str) -> dict:
             print(f"  {status} {result.model_id} — {result.latency_ms:.0f}ms")
             raw_responses.append(result)
 
-    # ── Score all responses ────────────────────────────────
-    scored   = scorer.score_all(query, raw_responses)
-    ranked   = sorted(scored, key=lambda s: s.weighted_score, reverse=True)
+    # ── Step 3: RCKS Scoring ───────────────────────────────
+    scored = scorer.score_all(query, raw_responses)
+    ranked = sorted(scored, key=lambda s: s.weighted_score, reverse=True)
 
-    # ── Fuse all responses into one ────────────────────────
-    print(f"\n  🔀 Fusing responses from all models...")
-    fused_response = fuse_responses(query, scored)
+    # ── Step 4 + 5: Bayesian update + get fusion weights ──
+    # Build eval_scores dict for ALL models at once.
+    # Yashveer's update_priors() needs all scores together to compute
+    # the shared evidence term P(o) = Σ(score_j × prior_j).
+    print(f"\n  📊 Bayesian update (task_type={task_type})...")
+
+    eval_scores = {
+        s.model_id: (s.weighted_score if s.success else 0.1)
+        for s in scored
+    }
+
+    bayes_result = bayesian.process_confidence_request(
+        store   = bayesian.store,
+        payload = {
+            "task_type":   task_type,
+            "eval_scores": eval_scores,
+            "query_id":    request_id
+        },
+        verbose = False   # set True to see full Bayesian update log
+    )
+
+    # Print prior update summary (old → new per model)
+    updated_priors = bayes_result["updated_priors"]
+    for model_id, new_prior in updated_priors.items():
+        # Retrieve old prior from history (last record before this update)
+        history = bayesian.store.get_history(model_id, task_type)
+        if history:
+            old_prior = history[-1]["old_prior"]
+            delta     = new_prior - old_prior
+            direction = "↑" if delta > 0 else "↓" if delta < 0 else "→"
+        else:
+            old_prior = bayesian.DEFAULT_PRIOR
+            delta     = 0.0
+            direction = "→"
+        print(
+            f"     {model_id:<25} "
+            f"eval={eval_scores[model_id]:.3f}  "
+            f"prior {old_prior:.3f} → {new_prior:.3f}  "
+            f"Δ={delta:+.3f} {direction}"
+        )
+
+    # ── Step 5: Show fusion weights ────────────────────────
+    fusion_weights = bayes_result["weights"]
+    print(f"\n  ⚖️  Fusion weights (Bayesian, normalised to 1.0):")
+    for model_id, weight in sorted(fusion_weights.items(), key=lambda x: x[1], reverse=True):
+        bar = "█" * int(weight * 30)
+        print(f"     {model_id:<25} {weight:.4f}  {bar}")
+
+    # ── Step 6: Fuse responses ────────────────────────────
+    print(f"\n  🔀 Fusing responses using Bayesian weights...")
+    final_response = fuse_responses(query, scored, fusion_weights)
 
     total_ms = round((time.time() - start) * 1000, 2)
 
+    # Save priors to disk
+    bayesian.store.save()
+
     # ── Scores Table ───────────────────────────────────────
     print(f"\n{'─'*60}")
-    print("INDIVIDUAL MODEL SCORES (ranked)")
+    print("INDIVIDUAL MODEL SCORES (RCKS — ranked by weighted score)")
     print(f"{'─'*60}")
-    print(f"  {'Model':<20} {'Rel':>5} {'Coh':>5} {'Com':>5} {'Con':>5} {'Score':>7} {'Tier':<8}")
-    print(f"  {'─'*20} {'─'*5} {'─'*5} {'─'*5} {'─'*5} {'─'*7} {'─'*8}")
+    print(f"  {'Model':<25} {'Rel':>5} {'Coh':>5} {'Com':>5} {'Con':>5} {'Score':>7} {'Tier':<8}")
+    print(f"  {'─'*25} {'─'*5} {'─'*5} {'─'*5} {'─'*5} {'─'*7} {'─'*8}")
     for s in ranked:
         print(
-            f"  {s.model_id:<20} "
+            f"  {s.model_id:<25} "
             f"{s.relevance:>5.2f} "
             f"{s.coherence:>5.2f} "
             f"{s.completeness:>5.2f} "
@@ -111,21 +182,24 @@ def run_pipeline(query: str) -> dict:
     ]
     print(json.dumps(all_responses_json, indent=2))
 
-    # ── Fused Response ─────────────────────────────────────
+    # ── Final Fused Response ───────────────────────────────
     print(f"\n{'─'*60}")
-    print("FUSED RESPONSE (combined from all models)")
+    print("FINAL RESPONSE (Bayesian-weighted fusion)")
     print(f"{'─'*60}")
-    print(fused_response)
+    print(final_response)
 
-    print(f"\nTotal pipeline time: {total_ms}ms")
+    print(f"\nTask type      : {task_type.upper()}")
+    print(f"Fusion weights : {fusion_weights}")
+    print(f"Total pipeline : {total_ms}ms")
     print(f"{'='*60}\n")
 
-    # ── Full result dict ───────────────────────────────────
     result = {
         "request_id":      request_id,
         "query":           query,
+        "task_type":       task_type,
         "total_time_ms":   total_ms,
-        "fused_response":  fused_response,
+        "final_response":  final_response,
+        "fusion_weights":  fusion_weights,
         "model_responses": all_responses_json,
     }
     return result

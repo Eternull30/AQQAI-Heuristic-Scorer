@@ -1,179 +1,235 @@
 """
-AQQAI — Response Fusion Engine (fusion.py)
-==========================================
-Combines responses from all 3 models into one superior response.
-No extra API calls — uses sentence-transformers (already installed).
+AQQAI — Fusion Engine (fusion.py)
+===================================
+Blends multiple model responses into one final answer using Bayesian weights.
 
-How it works:
-  1. Split every model response into individual sentences
-  2. Score each sentence against the query using sentence-transformers
-  3. Weight each sentence by both its relevance AND its model's overall score
-  4. Remove duplicate/near-duplicate sentences (cosine similarity > 0.85)
-  5. Pick the top N sentences
-  6. Re-order them logically (intro → body → conclusion)
-  7. Join into one clean fused response
+Algorithm (per task spec):
+  1. Sort responses by Bayesian weight (highest trust first)
+  2. Take the top response as the base answer
+  3. Go through remaining responses one by one (in weight order)
+  4. For each response, check sentence by sentence —
+     if a sentence adds new information not already in the base, add it
+  5. Return the final combined answer
 
-Why this approach:
-  - No extra API call — fully offline after model responses collected
-  - Uses sentence-transformers already installed for coherence scoring
-  - Each model contributes its best sentences — not just one model wins
-  - Deduplication ensures no repetition even if models say same thing
+The model with the highest Bayesian weight contributes most — its full
+response is the foundation. Lower-weight models only add sentences that
+are genuinely new (not near-duplicates of what's already in the base).
+
+This implements the architecture diagram formula:
+  O* = Σ P(mᵢ|oᵢ) · oᵢ
+  (weighted synthesis — not picking a winner — building a collective answer)
+
+How weights connect:
+  - Bayesian weights come from bayesian.get_weights(task_type)
+  - These replace RCKS scores as the model trust signal
+  - RCKS scores still feed INTO the Bayesian update (they're the eval input)
+  - Sentence deduplication uses sentence-transformers embeddings
 """
 
+from __future__ import annotations
+
 import re
-import numpy as np
+import logging
+from typing import Optional
+
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 from scorer import ScoredResponse
 
-# Reuse the same model instance already loaded in scorer.py
-# If scorer loaded it, we get it from cache — no re-download
-_ST_MODEL = None
+logger = logging.getLogger(__name__)
 
-def _get_model() -> SentenceTransformer:
-    global _ST_MODEL
-    if _ST_MODEL is None:
-        _ST_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
-    return _ST_MODEL
+# ──────────────────────────────────────────────────────────
+# MODEL — loaded once at import time (same model scorer uses)
+# ──────────────────────────────────────────────────────────
+
+_embed_model: Optional[SentenceTransformer] = None
+
+def _get_embed_model() -> SentenceTransformer:
+    global _embed_model
+    if _embed_model is None:
+        _embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+    return _embed_model
+
+
+# ──────────────────────────────────────────────────────────
+# CONSTANTS
+# ──────────────────────────────────────────────────────────
+
+# Cosine similarity threshold above which two sentences are "the same"
+DUPLICATE_THRESHOLD = 0.82
+
+# Minimum sentence length to consider (filters filler/headers)
+MIN_SENTENCE_WORDS = 6
+
+# Maximum sentences to take from each non-base model
+# (prevents one verbose model from dominating the additions)
+MAX_ADDITIONS_PER_MODEL = 4
+
+
+# ──────────────────────────────────────────────────────────
+# SENTENCE UTILITIES
+# ──────────────────────────────────────────────────────────
+
+# Patterns for sentences that are structural noise, not content
+_FILLER_PATTERNS = [
+    r"^(certainly|sure|of course|absolutely|great question)[!,.]",
+    r"^(here'?s?|below is|the following|in this|this is)",
+    r"^(i hope|i'?m happy|feel free|let me know)",
+    r"^#+\s",                        # markdown headers
+    r"^\s*[-*•]\s",                  # bullet points
+    r"^(in summary|to summarize|to conclude|in conclusion)",
+]
+_FILLER_RE = re.compile("|".join(_FILLER_PATTERNS), re.IGNORECASE)
 
 
 def _split_sentences(text: str) -> list[str]:
-    """Split text into clean sentences."""
-    parts = re.split(r"(?<=[.!?])\s+", text.strip())
-    return [s.strip() for s in parts if len(s.strip()) > 20]
-
-
-def _is_structural(sentence: str) -> bool:
     """
-    Detect structural/header sentences that don't add content.
-    e.g. "Here's a simple breakdown:", "Let me explain:", "Sure!"
-    These come from markdown headers or intro filler — skip them.
+    Split response text into individual sentences.
+    Filters out structural noise and very short sentences.
     """
-    sentence = sentence.strip()
-    structural_patterns = [
-        r"^(sure|certainly|absolutely|of course|great)[!.,]?$",
-        r"^here'?s?\s+(a|an|the|my|some)",
-        r"^let me (explain|break|walk|show)",
-        r"^in (summary|conclusion|short|brief)",
-        r"^\d+\.",          # numbered list starters like "1."
-        r"^#+\s",           # markdown headers
-        r"^[-*•]\s",        # bullet points
-    ]
-    lower = sentence.lower()
-    for pattern in structural_patterns:
-        if re.match(pattern, lower):
-            return True
-    # Very short sentences are usually filler
-    if len(sentence.split()) < 5:
-        return True
-    return False
+    if not text or not text.strip():
+        return []
+
+    # Split on sentence-ending punctuation followed by whitespace/end
+    raw = re.split(r'(?<=[.!?])\s+', text.strip())
+
+    sentences = []
+    for s in raw:
+        s = s.strip()
+        # Filter: too short
+        if len(s.split()) < MIN_SENTENCE_WORDS:
+            continue
+        # Filter: structural filler
+        if _FILLER_RE.match(s):
+            continue
+        sentences.append(s)
+
+    return sentences
 
 
-def fuse_responses(query: str, scored_responses: list[ScoredResponse]) -> str:
+def _is_duplicate(candidate: str, existing_embeddings: list, model: SentenceTransformer) -> bool:
     """
-    Main fusion function.
-    Takes all scored responses, returns one fused response string.
+    Returns True if candidate sentence is semantically similar to any
+    sentence already in the base (cosine similarity > DUPLICATE_THRESHOLD).
+    """
+    if not existing_embeddings:
+        return False
+
+    candidate_emb = model.encode([candidate])
+    existing_matrix = np.vstack(existing_embeddings)
+    sims = cosine_similarity(candidate_emb, existing_matrix)[0]
+
+    return float(np.max(sims)) > DUPLICATE_THRESHOLD
+
+
+# ──────────────────────────────────────────────────────────
+# MAIN FUNCTION
+# ──────────────────────────────────────────────────────────
+
+def fuse_responses(
+    query: str,
+    scored_responses: list[ScoredResponse],
+    weights: Optional[dict[str, float]] = None,
+) -> str:
+    """
+    Fuse multiple model responses into one combined answer.
+
+    Algorithm:
+      1. Sort responses by Bayesian weight (highest first)
+      2. Take the top response as the base answer
+      3. For each remaining response (in weight order):
+         - Split into sentences
+         - Add only sentences that are NOT near-duplicates of the base
+      4. Return combined answer
 
     Args:
-        query:            The original user query
-        scored_responses: List of ScoredResponse from HeuristicScorer
+        query:            Original user query (kept for future query-relevance filtering)
+        scored_responses: List of ScoredResponse objects from scorer.py
+        weights:          Dict of model_id → Bayesian weight from bayesian.get_weights()
+                          If None or empty, falls back to RCKS weighted_score as proxy.
 
     Returns:
-        A single fused response string combining the best of all models.
-        Falls back to highest scoring response if fusion fails.
+        Fused response string.
     """
-    model = _get_model()
-
-    # ── Step 1: Collect all sentences from successful responses ──
+    # Filter to successful responses only
     successful = [r for r in scored_responses if r.success and r.content.strip()]
 
     if not successful:
+        logger.warning("[Fusion] No successful responses to fuse.")
         return ""
 
+    # Single response — nothing to fuse
     if len(successful) == 1:
-        # Only one model succeeded — return it directly
-        return successful[0].content
+        logger.info("[Fusion] Only one successful response — returning as-is.")
+        return successful[0].content.strip()
 
-    all_sentences = []
-    for r in successful:
-        sentences = _split_sentences(r.content)
-        for sent in sentences:
-            if not _is_structural(sent):
-                all_sentences.append({
-                    "text":        sent,
-                    "model_id":    r.model_id,
-                    "model_score": r.weighted_score,
-                })
+    # ── Step 1: Sort by Bayesian weights (highest trust first) ────────────
+    if weights:
+        # Use Bayesian weights — the primary path once Task 3 is active
+        def sort_key(r: ScoredResponse) -> float:
+            return weights.get(r.model_id, 0.0)
+    else:
+        # Fallback: use RCKS weighted_score as proxy for trust
+        # This runs before Bayesian layer has any data (first few queries)
+        logger.debug("[Fusion] No Bayesian weights provided — using RCKS scores as fallback")
+        def sort_key(r: ScoredResponse) -> float:
+            return r.weighted_score
 
-    if not all_sentences:
-        # Fallback — return best scoring response
-        return max(successful, key=lambda r: r.weighted_score).content
+    ranked = sorted(successful, key=sort_key, reverse=True)
 
-    # ── Step 2: Score each sentence against the query ────────────
-    query_embedding    = model.encode([query])
-    sentence_texts     = [s["text"] for s in all_sentences]
-    sentence_embeddings = model.encode(sentence_texts)
+    logger.info(
+        f"[Fusion] Fusing {len(ranked)} responses. "
+        f"Order: {[r.model_id for r in ranked]}"
+    )
 
-    for i, sent in enumerate(all_sentences):
-        query_sim = float(
-            cosine_similarity([query_embedding[0]], [sentence_embeddings[i]])[0][0]
+    # ── Step 2: Take the top response as the base ─────────────────────────
+    base_response = ranked[0]
+    base_sentences = _split_sentences(base_response.content)
+
+    if not base_sentences:
+        # Base model had no extractable sentences — use raw content
+        base_sentences = [base_response.content.strip()]
+
+    model = _get_embed_model()
+
+    # Pre-compute embeddings for all base sentences
+    base_embeddings = [model.encode([s]) for s in base_sentences]
+    fused_sentences = list(base_sentences)
+
+    logger.debug(
+        f"[Fusion] Base: {base_response.model_id} "
+        f"(weight={sort_key(base_response):.3f}) — {len(base_sentences)} sentences"
+    )
+
+    # ── Steps 3 + 4: Enrich with unique sentences from other models ───────
+    for response in ranked[1:]:
+        candidates = _split_sentences(response.content)
+        additions = 0
+
+        model_weight = sort_key(response)
+        logger.debug(
+            f"[Fusion] Checking {response.model_id} "
+            f"(weight={model_weight:.3f}) — {len(candidates)} candidate sentences"
         )
-        # Final sentence score:
-        # 60% — how relevant is this sentence to the query
-        # 40% — how good was the model that produced it overall
-        sent["sentence_score"] = (query_sim * 0.6) + (sent["model_score"] * 0.4)
 
-    # ── Step 3: Remove near-duplicate sentences ──────────────────
-    # Sort by score descending — best sentences first
-    sorted_sents = sorted(all_sentences, key=lambda x: x["sentence_score"], reverse=True)
+        for sentence in candidates:
+            if additions >= MAX_ADDITIONS_PER_MODEL:
+                break
 
-    selected         = []
-    selected_embeddings = []
+            if not _is_duplicate(sentence, base_embeddings, model):
+                # New information — add it
+                fused_sentences.append(sentence)
+                base_embeddings.append(model.encode([sentence]))
+                additions += 1
+                logger.debug(f"[Fusion]   ✓ Added: {sentence[:80]}...")
+            else:
+                logger.debug(f"[Fusion]   ✗ Duplicate skipped")
 
-    for sent in sorted_sents:
-        idx = sentence_texts.index(sent["text"])
-        emb = sentence_embeddings[idx]
+        logger.debug(f"[Fusion]   → {additions} sentences added from {response.model_id}")
 
-        if selected_embeddings:
-            # Check similarity against all already selected sentences
-            sims = cosine_similarity([emb], selected_embeddings)[0]
-            if max(sims) > 0.82:
-                # Too similar to something already selected — skip
-                continue
-
-        selected.append(sent)
-        selected_embeddings.append(emb)
-
-        # Cap at 10 sentences — enough for a complete response
-        if len(selected) >= 10:
-            break
-
-    if not selected:
-        return max(successful, key=lambda r: r.weighted_score).content
-
-    # ── Step 4: Re-order sentences logically ─────────────────────
-    # Strategy:
-    #   - Definition/intro sentences first (contain "is", "are", "refers to")
-    #   - Explanation sentences in the middle
-    #   - Example/use case sentences after
-    #   - Conclusion sentences last
-
-    def _sentence_order_score(sent_text: str) -> int:
-        lower = sent_text.lower()
-        if any(p in lower for p in ["is a", "is an", "are a", "refers to", "defined as", "known as"]):
-            return 0   # definition → goes first
-        if any(p in lower for p in ["for example", "for instance", "such as", "e.g", "like"]):
-            return 2   # example → goes after explanation
-        if any(p in lower for p in ["use case", "used for", "application", "benefit", "advantage"]):
-            return 3   # use cases → near end
-        if any(p in lower for p in ["in summary", "in conclusion", "overall", "to summarize"]):
-            return 4   # conclusion → goes last
-        return 1       # explanation → goes in middle
-
-    selected_sorted = sorted(selected, key=lambda s: _sentence_order_score(s["text"]))
-
-    # ── Step 5: Join into final response ─────────────────────────
-    fused = " ".join(s["text"] for s in selected_sorted)
-
-    return fused.strip()
+    # ── Step 5: Join and return ───────────────────────────────────────────
+    fused = " ".join(fused_sentences)
+    logger.info(f"[Fusion] Final response: {len(fused_sentences)} sentences from {len(ranked)} models")
+    return fused

@@ -1,0 +1,183 @@
+{
+  "gemini-3.1-flash-lite": {
+    "coding": {
+      "prior": 0.57647,
+      "history": [
+        {
+          "model": "gemini-3.1-flash-lite",
+          "task_type": "coding",
+          "old_prior": 0.7,
+          "eval_score": 0.7277,
+          "new_prior": 0.629507,
+          "timestamp": "2026-06-23T12:25:47.115671+00:00"
+        },
+        {
+          "model": "gemini-3.1-flash-lite",
+          "task_type": "coding",
+          "old_prior": 0.629507,
+          "eval_score": 0.7353,
+          "new_prior": 0.57647,
+          "timestamp": "2026-06-23T12:46:19.200202+00:00"
+        }
+      ]
+    },
+    "factual": {
+      "prior": 0.7,
+      "history": []
+    },
+    "reasoning": {
+      "prior": 0.7,
+      "history": []
+    },
+    "summary": {
+      "prior": 0.7,
+      "history": []
+    },
+    "creative": {
+      "prior": 0.7,
+      "history": []
+    },
+    "general": {
+      "prior": 0.7,
+      "history": []
+    }
+  },
+  "gpt-oss-120b": {
+    "coding": {
+      "prior": 0.7,
+      "history": []
+    },
+    "factual": {
+      "prior": 0.7,
+      "history": []
+    },
+    "reasoning": {
+      "prior": 0.7,
+      "history": []
+    },
+    "summary": {
+      "prior": 0.7,
+      "history": []
+    },
+    "creative": {
+      "prior": 0.7,
+      "history": []
+    },
+    "general": {
+      "prior": 0.7,
+      "history": []
+    }
+  },
+  "mistral-small-latest": {
+    "coding": {
+      "prior": 0.7,
+      "history": []
+    },
+    "factual": {
+      "prior": 0.7,
+      "history": []
+    },
+    "reasoning": {
+      "prior": 0.7,
+      "history": []
+    },
+    "summary": {
+      "prior": 0.7,
+      "history": []
+    },
+    "creative": {
+      "prior": 0.7,
+      "history": []
+    },
+    "general": {
+      "prior": 0.7,
+      "history": []
+    }
+  },
+  "cerebras-gpt-oss": {
+    "coding": {
+      "prior": 0.563435,
+      "history": [
+        {
+          "model": "cerebras-gpt-oss",
+          "task_type": "coding",
+          "old_prior": 0.7,
+          "eval_score": 0.6799,
+          "new_prior": 0.624941,
+          "timestamp": "2026-06-23T12:25:47.103181+00:00"
+        },
+        {
+          "model": "cerebras-gpt-oss",
+          "task_type": "coding",
+          "old_prior": 0.624941,
+          "eval_score": 0.6453,
+          "new_prior": 0.563435,
+          "timestamp": "2026-06-23T12:46:19.198471+00:00"
+        }
+      ]
+    },
+    "factual": {
+      "prior": 0.7,
+      "history": []
+    },
+    "reasoning": {
+      "prior": 0.7,
+      "history": []
+    },
+    "summary": {
+      "prior": 0.7,
+      "history": []
+    },
+    "creative": {
+      "prior": 0.7,
+      "history": []
+    },
+    "general": {
+      "prior": 0.7,
+      "history": []
+    }
+  },
+  "mistral-small": {
+    "coding": {
+      "prior": 0.564094,
+      "history": [
+        {
+          "model": "mistral-small",
+          "task_type": "coding",
+          "old_prior": 0.7,
+          "eval_score": 0.6863,
+          "new_prior": 0.625552,
+          "timestamp": "2026-06-23T12:25:47.116887+00:00"
+        },
+        {
+          "model": "mistral-small",
+          "task_type": "coding",
+          "old_prior": 0.625552,
+          "eval_score": 0.6464,
+          "new_prior": 0.564094,
+          "timestamp": "2026-06-23T12:46:19.199456+00:00"
+        }
+      ]
+    },
+    "factual": {
+      "prior": 0.7,
+      "history": []
+    },
+    "reasoning": {
+      "prior": 0.7,
+      "history": []
+    },
+    "summary": {
+      "prior": 0.7,
+      "history": []
+    },
+    "creative": {
+      "prior": 0.7,
+      "history": []
+    },
+    "general": {
+      "prior": 0.7,
+      "history": []
+    }
+  }
+}
