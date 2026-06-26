@@ -2,12 +2,13 @@
 # Install with: pip install -r requirements.txt
 
 fastapi==0.115.0
-uvicorn==0.30.0
-pydantic==2.7.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
 python-dotenv==1.0.0
-scikit-learn==1.5.0
-numpy==1.26.0
+scikit-learn==1.5.2
+numpy==1.26.4
+requests==2.31.0
 
-# Optional — for better coherence scoring
-# Uncomment when available in your environment
-# sentence-transformers==3.0.0
+# Coherence scoring — all-MiniLM-L6-v2 is pre-baked into the Docker image
+# (downloaded at build time, not runtime)
+sentence-transformers==3.1.1

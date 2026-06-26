@@ -72,15 +72,13 @@ store: dict[str, dict] = {}
 
 @app.on_event("startup")
 def startup_event():
-    model_ids = [adapter.model_id for adapter in ALL_ADAPTERS]
-    # Ensure the store knows about all models and load existing priors from disk
-    bayesian.store.initialize(model_ids)
-    bayesian.store.load()  # auto-loads from confidence_store.json if it exists
+    print(f"[startup] Bayesian store ready — {len(bayesian.store.get_all())} models loaded")
 
 
 @app.on_event("shutdown")
 def shutdown_event():
-    bayesian.store.save()  # persist priors to confidence_store.json
+    bayesian.store.save()
+    print("[shutdown] Bayesian priors saved to priors.json")
 
 
 # ──────────────────────────────────────────────────────────
